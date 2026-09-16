@@ -2,30 +2,19 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { signIn } from 'next-auth/react';
-import { Target, Trophy, ShieldCheck, Sparkles, School, ArrowRight, User, Mail } from 'lucide-react';
+import { Target, Trophy, ShieldCheck, Sparkles, School, ArrowRight, User, Mail, AlertCircle } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
   const [showDemoInput, setShowDemoInput] = useState(false);
   const [studentName, setStudentName] = useState('');
   const [studentEmail, setStudentEmail] = useState('');
+  const [infoMessage, setInfoMessage] = useState('');
 
-  const handleGoogleLogin = async () => {
-    try {
-      // Google OAuth 認証を試行
-      const result = await signIn('google', { callbackUrl: '/dashboard', redirect: false });
-      if (result?.error) {
-        // OAuth 未設定時またはキャンセル時は簡易入力モーダルを表示
-        setShowDemoInput(true);
-      } else if (result?.url) {
-        router.push(result.url);
-      } else {
-        setShowDemoInput(true);
-      }
-    } catch {
-      setShowDemoInput(true);
-    }
+  const handleGoogleLogin = () => {
+    // Google OAuth 設定前は直接入力フォームへ案内し、401エラーを防止
+    setInfoMessage('氏名・メール/出席番号を入力してログインできます');
+    setShowDemoInput(true);
   };
 
   const handleManualLoginSubmit = (e: React.FormEvent) => {
@@ -102,24 +91,24 @@ export default function LoginPage() {
                   d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                 />
               </svg>
-              <span>学校のGoogleアカウントでログイン</span>
+              <span>生徒ログイン（氏名・アカウント入力）</span>
               <ArrowRight className="w-4 h-4 text-slate-500" />
-            </button>
-
-            <button
-              onClick={() => setShowDemoInput(true)}
-              className="text-xs text-slate-400 hover:text-indigo-300 underline transition-colors pt-2 block mx-auto"
-            >
-              ※氏名・学籍番号で直接ログインする場合はこちら
             </button>
 
             <p className="text-[11px] text-slate-400 flex items-center justify-center gap-1 pt-1">
               <School className="w-3.5 h-3.5 text-indigo-400" />
-              <span>@school.ed.jp などの学校用Googleアカウントを推奨</span>
+              <span>生徒ごとの氏名・メール/出席番号で個別記録されます</span>
             </p>
           </div>
         ) : (
           <form onSubmit={handleManualLoginSubmit} className="space-y-4 pt-2 text-left">
+            {infoMessage && (
+              <div className="p-3 bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 text-xs rounded-xl flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-indigo-400 flex-shrink-0" />
+                <span>{infoMessage}</span>
+              </div>
+            )}
+
             <div className="space-y-1">
               <label className="text-xs font-bold text-slate-300 flex items-center gap-1">
                 <User className="w-3.5 h-3.5 text-indigo-400" />
@@ -138,7 +127,7 @@ export default function LoginPage() {
             <div className="space-y-1">
               <label className="text-xs font-bold text-slate-300 flex items-center gap-1">
                 <Mail className="w-3.5 h-3.5 text-indigo-400" />
-                <span>メールアドレスまたは番号（例：student123@school.ed.jp）</span>
+                <span>メールアドレスまたは出席番号（例：student123@school.ed.jp）</span>
               </label>
               <input
                 type="text"
@@ -157,14 +146,6 @@ export default function LoginPage() {
               >
                 <span>ログインして面接練習を始める</span>
                 <ArrowRight className="w-4 h-4 text-indigo-200" />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setShowDemoInput(false)}
-                className="w-full text-center text-xs text-slate-400 hover:text-slate-200 py-1"
-              >
-                戻る
               </button>
             </div>
           </form>
