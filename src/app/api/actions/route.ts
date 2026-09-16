@@ -5,7 +5,7 @@ import { ActionRecord } from '@/types';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { userEmail, userName, actionType, questionDetail, pointsEarned } = body;
+    const { userEmail, userName, actionType, questionDetail, pointsEarned, totalPoints } = body;
 
     if (!userEmail || !actionType || pointsEarned === undefined) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -19,6 +19,7 @@ export async function POST(request: Request) {
       actionType,
       questionDetail: questionDetail || '',
       pointsEarned: Number(pointsEarned),
+      totalPoints: totalPoints !== undefined ? Number(totalPoints) : undefined,
     };
 
     // Google Sheets へ追記（環境変数未設定時はスキップされる）

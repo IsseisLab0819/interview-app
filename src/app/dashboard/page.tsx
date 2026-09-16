@@ -154,14 +154,31 @@ export default function DashboardPage() {
   ) => {
     setIsLoading(true);
 
+    const currentTimestamp = new Date().toISOString();
+    const tempActions = [
+      ...actions,
+      {
+        id: `act-${Date.now()}`,
+        timestamp: currentTimestamp,
+        userEmail: user.email,
+        userName: user.name,
+        actionType,
+        questionDetail,
+        pointsEarned,
+      },
+    ];
+
+    const computedTotalPoints = calculateStudentStats(tempActions).totalPoints;
+
     const newRecord: ActionRecord = {
       id: `act-${Date.now()}`,
-      timestamp: new Date().toISOString(),
+      timestamp: currentTimestamp,
       userEmail: user.email,
       userName: user.name,
       actionType,
       questionDetail,
       pointsEarned,
+      totalPoints: computedTotalPoints,
     };
 
     const newActions = [...actions, newRecord];

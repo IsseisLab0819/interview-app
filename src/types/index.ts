@@ -13,6 +13,7 @@ export interface ActionRecord {
   actionType: ActionType;
   questionDetail: string;
   pointsEarned: number;
+  totalPoints?: number;
 }
 
 export interface QuestionItem {

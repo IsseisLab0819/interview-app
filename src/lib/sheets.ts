@@ -49,12 +49,13 @@ export async function appendActionToSheet(record: ActionRecord): Promise<boolean
         record.actionType,
         record.questionDetail,
         record.pointsEarned,
+        record.totalPoints !== undefined ? record.totalPoints : '',
       ],
     ];
 
     await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: 'ActionHistory!A:F',
+      range: 'ActionHistory!A:G',
       valueInputOption: 'USER_ENTERED',
       requestBody: {
         values,
@@ -80,7 +81,7 @@ export async function fetchUserActionsFromSheet(userEmail: string): Promise<Acti
 
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'ActionHistory!A:F',
+      range: 'ActionHistory!A:G',
     });
 
     const rows = response.data.values;
@@ -90,7 +91,7 @@ export async function fetchUserActionsFromSheet(userEmail: string): Promise<Acti
     const targetEmail = (userEmail || '').trim().toLowerCase();
     const userRecords: ActionRecord[] = [];
     for (let i = 1; i < rows.length; i++) {
-      const [timestamp, email, userName, actionType, questionDetail, pointsEarned] = rows[i];
+      const [timestamp, email, userName, actionType, questionDetail, pointsEarned, totalPoints] = rows[i];
       const rowEmail = (email || '').trim().toLowerCase();
       if (rowEmail === targetEmail) {
         userRecords.push({
@@ -101,6 +102,7 @@ export async function fetchUserActionsFromSheet(userEmail: string): Promise<Acti
           actionType: actionType as ActionRecord['actionType'],
           questionDetail: questionDetail || '',
           pointsEarned: Number(pointsEarned) || 0,
+          totalPoints: totalPoints !== undefined ? Number(totalPoints) : undefined,
         });
       }
     }
