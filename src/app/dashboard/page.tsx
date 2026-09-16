@@ -16,11 +16,11 @@ import { PlusCircle, ListFilter, RefreshCw, Trophy, History, Clock } from 'lucid
 export default function DashboardPage() {
   const router = useRouter();
 
-  // ユーザー状態（デモ用デフォルト値）
-  const user = {
+  // ユーザー状態（ログイン情報から動的復元）
+  const [user, setUser] = useState<{ name: string; email: string }>({
     name: '山田 太郎',
     email: 'student@school.ed.jp',
-  };
+  });
 
   // 状態管理
   const [questions, setQuestions] = useState<QuestionItem[]>(DEFAULT_QUESTIONS);
@@ -31,9 +31,14 @@ export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState<'all' | 'motivation' | 'basic' | 'custom'>('all');
   const [isLoading, setIsLoading] = useState(false);
 
-  // 初回読み込み（LocalStorageからの復元）
+  // 初回読み込み（ユーザー情報・LocalStorageからの復元）
   useEffect(() => {
     try {
+      const savedUser = localStorage.getItem('interview_taisaku_current_user');
+      if (savedUser) {
+        setUser(JSON.parse(savedUser));
+      }
+
       const savedActions = localStorage.getItem('interview_taisaku_actions') || localStorage.getItem('interview_go_actions');
       const savedQuestions = localStorage.getItem('interview_taisaku_questions') || localStorage.getItem('interview_go_questions');
 
