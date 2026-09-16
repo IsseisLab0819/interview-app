@@ -18,7 +18,7 @@ export default function DashboardPage() {
 
   // ユーザー状態（ログイン情報から動的復元）
   const [user, setUser] = useState<{ name: string; email: string }>({
-    name: '山田 太郎',
+    name: '生徒ユーザー',
     email: 'student@school.ed.jp',
   });
 
@@ -31,35 +31,63 @@ export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState<'all' | 'motivation' | 'basic' | 'custom'>('all');
   const [isLoading, setIsLoading] = useState(false);
 
-  // 初回読み込み（ユーザー情報・LocalStorageからの復元）
+  // メールアドレスをキー名用に安全化する関数
+  const getEmailKey = (email: string) => (email ? email.replace(/[^a-zA-Z0-9]/g, '_') : 'default');
+
+  // 初回読み込み（ユーザー固有データのアカウント別分離＆APIからの同期）
   useEffect(() => {
     try {
-      const savedUser = localStorage.getItem('interview_taisaku_current_user');
-      if (savedUser) {
-        setUser(JSON.parse(savedUser));
+      const savedUserStr = localStorage.getItem('interview_taisaku_current_user');
+      let currentUser = user;
+      if (savedUserStr) {
+        currentUser = JSON.parse(savedUserStr);
+        setUser(currentUser);
       }
 
-      const savedActions = localStorage.getItem('interview_taisaku_actions') || localStorage.getItem('interview_go_actions');
-      const savedQuestions = localStorage.getItem('interview_taisaku_questions') || localStorage.getItem('interview_go_questions');
+      const emailKey = getEmailKey(currentUser.email);
+      const userActionsKey = `interview_taisaku_actions_${emailKey}`;
+      const userQuestionsKey = `interview_taisaku_questions_${emailKey}`;
+
+      const savedActions = localStorage.getItem(userActionsKey);
+      const savedQuestions = localStorage.getItem(userQuestionsKey);
 
       if (savedActions) {
         setActions(JSON.parse(savedActions));
+      } else {
+        setActions([]);
       }
+
       if (savedQuestions) {
         setQuestions(JSON.parse(savedQuestions));
+      } else {
+        setQuestions(DEFAULT_QUESTIONS);
+      }
+
+      // Google Sheets API からこの生徒の全記録を同期取得
+      if (currentUser.email) {
+        fetch(`/api/actions?email=${encodeURIComponent(currentUser.email)}`)
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.records && Array.isArray(data.records) && data.records.length > 0) {
+              setActions(data.records);
+              localStorage.setItem(userActionsKey, JSON.stringify(data.records));
+            }
+          })
+          .catch((err) => console.warn('API sync check:', err));
       }
     } catch {
       // safe fallback
     }
   }, []);
 
-  // アクションと質問の変更時にLocalStorage保存
+  // ユーザー固有キーへ状態を保存
   const saveState = (updatedActions: ActionRecord[], updatedQuestions: QuestionItem[]) => {
     setActions(updatedActions);
     setQuestions(updatedQuestions);
     try {
-      localStorage.setItem('interview_taisaku_actions', JSON.stringify(updatedActions));
-      localStorage.setItem('interview_taisaku_questions', JSON.stringify(updatedQuestions));
+      const emailKey = getEmailKey(user.email);
+      localStorage.setItem(`interview_taisaku_actions_${emailKey}`, JSON.stringify(updatedActions));
+      localStorage.setItem(`interview_taisaku_questions_${emailKey}`, JSON.stringify(updatedQuestions));
     } catch {
       // safe fallback
     }
@@ -81,7 +109,7 @@ export default function DashboardPage() {
     return actions.filter((a) => a.actionType === '教員面接').length;
   }, [actions]);
 
-  // アクションをAPI & ローカルに記録する共通関数（新しい記録はリストの末尾に追加）
+  // アクションをAPI & ローカルに記録する共通関数
   const recordAction = async (
     actionType: ActionRecord['actionType'],
     questionDetail: string,
@@ -100,7 +128,6 @@ export default function DashboardPage() {
       pointsEarned,
     };
 
-    // 新しい記録を一番下（末尾）に追加
     const newActions = [...actions, newRecord];
     const newQuestions = updatedQuestions || questions;
 
@@ -130,7 +157,7 @@ export default function DashboardPage() {
     recordAction(actionType, q.title, q.points, updatedQuestions);
   };
 
-  // オリジナル質問の追加（一番下・末尾に追加される）
+  // オリジナル質問の追加（末尾に追加）
   const handleAddCustomQuestion = (title: string, description: string) => {
     const newQ: QuestionItem = {
       id: `q-custom-${Date.now()}`,
@@ -138,11 +165,10 @@ export default function DashboardPage() {
       title,
       description,
       points: 3,
-      isCompleted: true, // 追加時にそのまま自己申告完了として扱う
+      isCompleted: true,
       completedAt: new Date().toISOString(),
     };
 
-    // 生徒が自分で追加した質問は必ずリストの一番下（末尾）に配置
     const updatedQuestions = [...questions, newQ];
     recordAction('オリジナル質問', title, 3, updatedQuestions);
   };
@@ -163,19 +189,28 @@ export default function DashboardPage() {
     recordAction('担任面接', '担任面接 最終確認クリア（GOサイン）', 100);
   };
 
-  // リセット（テスト用）
+  // ログアウト処理（端末からアカウントセッションを消去）
+  const handleLogout = () => {
+    try {
+      localStorage.removeItem('interview_taisaku_current_user');
+    } catch {
+      // safe fallback
+    }
+    router.push('/login');
+  };
+
+  // ユーザー固有データのリセット
   const handleReset = () => {
-    if (confirm('練習データを初期化しますか？')) {
-      localStorage.removeItem('interview_taisaku_actions');
-      localStorage.removeItem('interview_taisaku_questions');
-      localStorage.removeItem('interview_go_actions');
-      localStorage.removeItem('interview_go_questions');
+    if (confirm(`${user.name} さんの練習データを初期化しますか？`)) {
+      const emailKey = getEmailKey(user.email);
+      localStorage.removeItem(`interview_taisaku_actions_${emailKey}`);
+      localStorage.removeItem(`interview_taisaku_questions_${emailKey}`);
       setQuestions(DEFAULT_QUESTIONS);
       setActions([]);
     }
   };
 
-  // 質問リストの並び順制御（標準質問が上、自分で追加した練習記録質問は必ず一番下に表示）
+  // 質問リストの並び順制御
   const sortedAndFilteredQuestions = useMemo(() => {
     const standardQuestions = questions.filter((q) => q.category !== 'custom');
     const customQuestions = questions.filter((q) => q.category === 'custom');
@@ -192,7 +227,7 @@ export default function DashboardPage() {
         stats={stats}
         userName={user.name}
         userEmail={user.email}
-        onLogout={() => router.push('/login')}
+        onLogout={handleLogout}
       />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8">
@@ -288,7 +323,7 @@ export default function DashboardPage() {
             </button>
           </div>
 
-          {/* 質問カード一覧（オリジナル質問は一番下に表示される） */}
+          {/* 質問カード一覧 */}
           <div className="grid grid-cols-1 gap-4">
             {sortedAndFilteredQuestions.map((q) => (
               <QuestionCard
@@ -300,12 +335,14 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* 練習アクティビティ履歴（古い順に上、最新の追加記録が一番下に表示される） */}
+        {/* 練習アクティビティ履歴 */}
         {actions.length > 0 && (
           <div className="my-10 bg-slate-900/60 border border-slate-800 rounded-3xl p-6">
             <div className="flex items-center gap-2 mb-4">
               <History className="w-5 h-5 text-indigo-400" />
-              <h3 className="text-base font-bold text-white">練習記録アクティビティ（時系列・下に最新追加）</h3>
+              <h3 className="text-base font-bold text-white">
+                {user.name} さんの練習記録アクティビティ
+              </h3>
             </div>
             <div className="space-y-2.5 max-h-60 overflow-y-auto pr-2">
               {actions.map((act, index) => (
@@ -345,7 +382,7 @@ export default function DashboardPage() {
             className="flex items-center gap-1 text-slate-500 hover:text-rose-400 transition-colors"
           >
             <RefreshCw className="w-3.5 h-3.5" />
-            <span>デモデータをリセット</span>
+            <span>{user.name} さんのデータを初期化</span>
           </button>
         </div>
       </main>
