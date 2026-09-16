@@ -88,12 +88,15 @@ export async function fetchUserActionsFromSheet(userEmail: string): Promise<Acti
     if (!rows || rows.length <= 1) return []; // ヘッダーのみまたは空
 
     // 1行目はヘッダー
-    const targetEmail = (userEmail || '').trim().toLowerCase();
+    const targetQuery = (userEmail || '').trim().toLowerCase().replace(/\s+/g, '');
     const userRecords: ActionRecord[] = [];
     for (let i = 1; i < rows.length; i++) {
       const [timestamp, email, userName, actionType, questionDetail, pointsEarned, totalPoints] = rows[i];
-      const rowEmail = (email || '').trim().toLowerCase();
-      if (rowEmail === targetEmail) {
+      const rowEmail = (email || '').trim().toLowerCase().replace(/\s+/g, '');
+      const rowName = (userName || '').trim().toLowerCase().replace(/\s+/g, '');
+
+      // B列 (UserEmail) または C列 (UserName) のどちらに一致しても連動して過去履歴を取り出す
+      if ((rowEmail && rowEmail === targetQuery) || (rowName && rowName === targetQuery)) {
         userRecords.push({
           id: `sheet-${i}`,
           timestamp: timestamp || new Date().toISOString(),
