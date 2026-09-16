@@ -87,17 +87,19 @@ export async function fetchUserActionsFromSheet(userEmail: string): Promise<Acti
     if (!rows || rows.length <= 1) return []; // ヘッダーのみまたは空
 
     // 1行目はヘッダー
+    const targetEmail = (userEmail || '').trim().toLowerCase();
     const userRecords: ActionRecord[] = [];
     for (let i = 1; i < rows.length; i++) {
       const [timestamp, email, userName, actionType, questionDetail, pointsEarned] = rows[i];
-      if (email === userEmail) {
+      const rowEmail = (email || '').trim().toLowerCase();
+      if (rowEmail === targetEmail) {
         userRecords.push({
           id: `sheet-${i}`,
-          timestamp,
+          timestamp: timestamp || new Date().toISOString(),
           userEmail: email,
-          userName,
-          actionType,
-          questionDetail,
+          userName: userName || '',
+          actionType: actionType as ActionRecord['actionType'],
+          questionDetail: questionDetail || '',
           pointsEarned: Number(pointsEarned) || 0,
         });
       }

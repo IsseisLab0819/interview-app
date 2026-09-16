@@ -32,9 +32,43 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(false);
 
   // メールアドレスをキー名用に安全化する関数
-  const getEmailKey = (email: string) => (email ? email.replace(/[^a-zA-Z0-9]/g, '_') : 'default');
+  const getEmailKey = (email: string) => (email ? email.trim().toLowerCase().replace(/[^a-zA-Z0-9]/g, '_') : 'default');
 
-  // 初回読み込み（ユーザー固有データのアカウント別分離＆APIからの同期）
+  // アクション履歴に基づき質問リストの達成状態とオリジナル質問を動的復元
+  const syncQuestionsWithActions = (actionRecords: ActionRecord[], baseQuestions: QuestionItem[]) => {
+    const completedDetails = new Set(actionRecords.map((a) => (a.questionDetail || '').trim()));
+
+    // 標準質問の達成フラグを同期
+    const updated = baseQuestions.map((q) => {
+      if (completedDetails.has(q.title.trim())) {
+        return { ...q, isCompleted: true };
+      }
+      return q;
+    });
+
+    // オリジナル質問の復元
+    const customActions = actionRecords.filter((a) => a.actionType === 'オリジナル質問');
+    const existingCustomTitles = new Set(updated.filter((q) => q.category === 'custom').map((q) => q.title.trim()));
+
+    for (const cAct of customActions) {
+      const title = (cAct.questionDetail || '').trim();
+      if (title && !existingCustomTitles.has(title)) {
+        updated.push({
+          id: `q-custom-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+          category: 'custom',
+          title,
+          points: cAct.pointsEarned || 3,
+          isCompleted: true,
+          completedAt: cAct.timestamp,
+        });
+        existingCustomTitles.add(title);
+      }
+    }
+
+    return updated;
+  };
+
+  // 初回読み込み（ユーザー固有データのアカウント別分離＆APIからの完全復元）
   useEffect(() => {
     try {
       const savedUserStr = localStorage.getItem('interview_taisaku_current_user');
@@ -48,29 +82,31 @@ export default function DashboardPage() {
       const userActionsKey = `interview_taisaku_actions_${emailKey}`;
       const userQuestionsKey = `interview_taisaku_questions_${emailKey}`;
 
-      const savedActions = localStorage.getItem(userActionsKey);
-      const savedQuestions = localStorage.getItem(userQuestionsKey);
+      const savedActionsStr = localStorage.getItem(userActionsKey);
+      const savedQuestionsStr = localStorage.getItem(userQuestionsKey);
 
-      if (savedActions) {
-        setActions(JSON.parse(savedActions));
+      let loadedActions: ActionRecord[] = savedActionsStr ? JSON.parse(savedActionsStr) : [];
+      let loadedQuestions: QuestionItem[] = savedQuestionsStr ? JSON.parse(savedQuestionsStr) : DEFAULT_QUESTIONS;
+
+      if (loadedActions.length > 0) {
+        setActions(loadedActions);
+        setQuestions(syncQuestionsWithActions(loadedActions, loadedQuestions));
       } else {
         setActions([]);
-      }
-
-      if (savedQuestions) {
-        setQuestions(JSON.parse(savedQuestions));
-      } else {
         setQuestions(DEFAULT_QUESTIONS);
       }
 
-      // Google Sheets API からこの生徒の全記録を同期取得
+      // Google Sheets API からこの生徒の全記録を取得して同期・復元
       if (currentUser.email) {
         fetch(`/api/actions?email=${encodeURIComponent(currentUser.email)}`)
           .then((res) => res.json())
           .then((data) => {
             if (data.records && Array.isArray(data.records) && data.records.length > 0) {
               setActions(data.records);
+              const syncedQuestions = syncQuestionsWithActions(data.records, loadedQuestions);
+              setQuestions(syncedQuestions);
               localStorage.setItem(userActionsKey, JSON.stringify(data.records));
+              localStorage.setItem(userQuestionsKey, JSON.stringify(syncedQuestions));
             }
           })
           .catch((err) => console.warn('API sync check:', err));
