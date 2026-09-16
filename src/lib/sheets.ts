@@ -2,30 +2,48 @@ import { google } from 'googleapis';
 import { ActionRecord } from '@/types';
 
 /**
+ * Vercel や .env に貼り付けられた秘密鍵の改行・クォーテーション文字を安全に正規化
+ */
+function formatPrivateKey(key: string | undefined): string | undefined {
+  if (!key) return undefined;
+  let formatted = key.trim();
+  // 先頭・末尾の引用符を削除
+  if ((formatted.startsWith('"') && formatted.endsWith('"')) || (formatted.startsWith("'") && formatted.endsWith("'"))) {
+    formatted = formatted.slice(1, -1);
+  }
+  // \n 文字を実際の改行に置換
+  return formatted.replace(/\\n/g, '\n');
+}
+
+/**
  * Google Sheets API クライアントの初期化
- * .env.local に認証情報が設定されている場合に接続します。
- * 未設定の場合は、画面動作確認用のフォールバック（モック）を提供します。
  */
 export async function getGoogleSheetsClient() {
-  const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-  const privateKey = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n');
-  const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID;
+  const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL?.trim();
+  const rawKey = process.env.GOOGLE_PRIVATE_KEY;
+  const privateKey = formatPrivateKey(rawKey);
+  const spreadsheetId = process.env.GOOGLE_SPREADSHEET_ID?.trim();
 
   if (!clientEmail || !privateKey || !spreadsheetId) {
     console.warn(
-      '⚠️ Google Sheets API 認証情報が .env.local に未設定です。ローカルデモモードで動作します。'
+      '⚠️ Google Sheets API 認証情報が未設定です。ローカルデモモードで動作します。'
     );
     return null;
   }
 
-  const auth = new google.auth.JWT({
-    email: clientEmail,
-    key: privateKey,
-    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-  });
+  try {
+    const auth = new google.auth.JWT({
+      email: clientEmail,
+      key: privateKey,
+      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+    });
 
-  const sheets = google.sheets({ version: 'v4', auth });
-  return { sheets, spreadsheetId };
+    const sheets = google.sheets({ version: 'v4', auth });
+    return { sheets, spreadsheetId };
+  } catch (error) {
+    console.error('Failed to initialize Google Sheets Auth client:', error);
+    return null;
+  }
 }
 
 /**
@@ -35,8 +53,7 @@ export async function appendActionToSheet(record: ActionRecord): Promise<boolean
   try {
     const client = await getGoogleSheetsClient();
     if (!client) {
-      // 認証情報がなければシミュレーション（成功扱い）
-      return true;
+      return false;
     }
 
     const { sheets, spreadsheetId } = client;
@@ -53,14 +70,22 @@ export async function appendActionToSheet(record: ActionRecord): Promise<boolean
       ],
     ];
 
-    await sheets.spreadsheets.values.append({
-      spreadsheetId,
-      range: 'ActionHistory!A:G',
-      valueInputOption: 'USER_ENTERED',
-      requestBody: {
-        values,
-      },
-    });
+    // まず ActionHistory シート名で試行、失敗した場合は最初のシート（A:G）へ書込
+    try {
+      await sheets.spreadsheets.values.append({
+        spreadsheetId,
+        range: 'ActionHistory!A:G',
+        valueInputOption: 'USER_ENTERED',
+        requestBody: { values },
+      });
+    } catch {
+      await sheets.spreadsheets.values.append({
+        spreadsheetId,
+        range: 'A:G',
+        valueInputOption: 'USER_ENTERED',
+        requestBody: { values },
+      });
+    }
 
     return true;
   } catch (error) {
@@ -70,7 +95,7 @@ export async function appendActionToSheet(record: ActionRecord): Promise<boolean
 }
 
 /**
- * ユーザーのActionHistoryから累積記録を取得する
+ * ユーザーの ActionHistory から累積記録を取得する
  */
 export async function fetchUserActionsFromSheet(userEmail: string): Promise<ActionRecord[]> {
   try {
@@ -79,10 +104,18 @@ export async function fetchUserActionsFromSheet(userEmail: string): Promise<Acti
 
     const { sheets, spreadsheetId } = client;
 
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range: 'ActionHistory!A:G',
-    });
+    let response;
+    try {
+      response = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: 'ActionHistory!A:G',
+      });
+    } catch {
+      response = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: 'A:G',
+      });
+    }
 
     const rows = response.data.values;
     if (!rows || rows.length <= 1) return []; // ヘッダーのみまたは空
